@@ -1,0 +1,64 @@
+<html>
+<head>
+<title>SMS</title>
+<style>
+  /* our own messages */
+  .outbound-api > .name {size: 5px; font-color:gray;}
+  .outbound-api > .phone {size: 5px; font-color:gray;}
+  .outbound-api { background-color: lightgray; margin: 1em}
+  .msg { margin: .5em }
+  .msg .inbound { background-color: lightblue; }
+  .name, .time, .phone {size: smaller; }
+</style>
+</head>
+
+<body>
+
+  <div id="log">
+      <form action="">
+      <input name=to list="phones" placeholder="Start typing...">
+      <datalist id="phones">
+        {% for phone, info in numbers.items() %}
+        <option value={{phone}}> {{info.lunaid}} {{info.name}} ({{phone}} {{info.source}}) </option>
+        {% endfor %}
+      </datalist>
+      <br>
+      <textarea name="msg">sms_appointment_reminders</textarea>
+      </br>
+      <input type=submit value=send></input>
+      </form>
+  </div>
+
+  <hr>
+  <!-- per lunaid conversation -->j
+  <div id=by_id>
+  {% for lunaid,messages in per_id.items() %}
+   <detials>
+   <summary> recordid <tt>{{lunaid}}</tt>
+             ({{messages|length}}, {{messages[-1]['date_sent']}})
+    </summary>
+    {% for msg in messages %}
+    <div class="msg {{msg.direction}}">
+      <div class=name> {{msg.name}} </div>
+      <div class=body> {{msg.body}} </div>
+      <div class=time> {{msg.date_sent}}</div>
+      <div class=phone> {{msg.from}}</div>
+    </div>
+    {% endfor %}
+    <!-- send form -->
+    <div class="outbound-api">
+      <form action="">
+       <label for="msg">to: {{messages[-1].subj_num}}</label>
+       <textarea name="msg">sms_appointment_reminders</textarea>
+       <br>
+       <input name=to value={{messages[-1].subj_num}} type=hidden /></input>
+       <br>
+       <input type=submit value=send></input>
+      </form>
+     </div>
+    </details>
+  {% endfor %}
+  </div>
+
+</body>
+</html>
