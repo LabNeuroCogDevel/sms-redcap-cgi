@@ -7,7 +7,7 @@ from datetime import datetime
 config = dotenv.dotenv_values(".twilio_env")
 API_BASE = "https://api.twilio.com"
 MSG_URL = f"{API_BASE}/2010-04-01/Accounts/{config['TWILIO_ACCOUNT_SID']}/Messages.json"
-auth = (config["TWILIO_API_KEY"], config["TWILIO_API_SECRET"])
+AUTH = (config["TWILIO_API_KEY"], config["TWILIO_API_SECRET"])
 
 
 # GET all msgs
@@ -18,7 +18,7 @@ def all_messages(all_pages=False):
     all_msgs_json = {"next_page_uri": MSG_URL}
     while msg_url := all_msgs_json["next_page_uri"]:
         all_msgs = requests.get(
-            msg_url, params={"PageSize": 1000}, auth=auth, timeout=30
+            msg_url, params={"PageSize": 1000}, auth=AUTH, timeout=30
         )
         if all_msgs.status_code != 200:
             # all_msgs.raise_for_status()
@@ -38,7 +38,7 @@ def send_msg(to, msg="sms_appointment_reminders"):
     """Send a message using Twilio's API"""
     sent = requests.post(
         MSG_URL,
-        auth=auth,
+        auth=AUTH,
         data={"To": to, "From": config["TWILIO_FROM"], "Body": msg},
         timeout=30,
     )
@@ -73,36 +73,21 @@ def habit_json_extract(redcap_json):
         # in reverse importance. last one is final for 'numberes'
         if phone := number_harmonize(j.get("contact_alt_phone")):
             source = "habit_alt_" + j["redcap_event_name"]
-            ins.append(
-                {
-                    "phone": phone,
-                    "source": source,
-                    "contact": j["contact_alt_name"],
-                }
-            )
-            numbers[phone] = {'lunaid': lunaid, 'name': j["contact_alt_name"], "source": source}
+            contact = j["contact_alt_name"]
+            ins.append({"phone": phone, "source": source, "contact": contact,})
+            numbers[phone] = {'lunaid': lunaid, 'name': contact, "source": source}
 
         if phone := number_harmonize(j.get("recruit_phone")):
             source = "habit_" + j["redcap_event_name"]
-            ins.append(
-                {
-                    "phone": phone,
-                    "source": source,
-                    "contact": j["recruit_contact_who"],
-                }
-            )
-            numbers[phone] = {'lunaid': lunaid, 'name': j["contact_alt_name"], "source": source}
+            contact = j["recruit_contact_who"]
+            ins.append({"phone": phone, "source": source, "contact": contact})
+            numbers[phone] = {'lunaid': lunaid, 'name': contact, "source": source}
 
         if phone := number_harmonize(j.get("contact_phonenumber")):
-            source ="habit_" + j["redcap_event_name"];
-            ins.append(
-                {
-                    "phone": phone,
-                    "source": source,
-                    "contact": j["contact_fullname"],
-                }
-            )
-            numbers[phone] = {'lunaid': lunaid, "source": source, 'name': j["contact_alt_name"]}
+            source ="habit_" + j["redcap_event_name"]
+            contact = j["contact_fullname"]
+            ins.append({"phone": phone, "source": source, "contact": contact})
+            numbers[phone] = {'lunaid': lunaid, "source": source, 'name': contact}
 
         if not ins:
             continue
@@ -116,6 +101,7 @@ def habit_json_extract(redcap_json):
 
 
 def redcap_contact_db_habit():
+    """Fetch unparsed redcap data. json list of dicts."""
     req = {
         "token": config["RC_API_HABIT"],
         "content": "record",
@@ -139,6 +125,7 @@ def redcap_contact_db_habit():
 
 
 def redcap_twilio():
+    """Combine redcap data and twilio log. Render with template. Default GET request page."""
     redcap_json = redcap_contact_db_habit()
     (contacts, numbers) = habit_json_extract(redcap_json)
 
@@ -179,4 +166,20 @@ def redcap_twilio():
 
 if __name__ == "__main__":
     print("Content-type: text/html\n\n")
-    redcap_twilio()
+    import os, sys
+    if os.environ.get('REQUEST_METHOD') == "POST":
+        import cgi
+        form = cgi.FieldStorage()
+        # FieldStorage(None, None, [MiniFieldStorage('to', '+14125305175'), MiniFieldStorage('msg', 'sms_appointment_reminders'), MiniFieldStorage('send', 'send-top'), MiniFieldStorage('msg', 'sms_appointment_reminders')]) 
+        if "to" not in form or "msg" not in form:
+            print("ERROR: missing to and/or msg")
+            sys.exit(1)
+        sms_to = form.getvalue("to")
+        print(f"<h1>Sending... to {sms_to}</h1>")
+        res = send_msg(sms_to, form.getvalue("msg"))
+        # set by step so if something goes wrong we get some output
+        print(f"<pre>sent status: {res.status_code}")
+        print(f"{res.json()}</pre>\n<br>")
+        print(f"go <a href='{os.environ.get('REQUEST_URI')}'>back</a>")
+    else:
+        redcap_twilio()
